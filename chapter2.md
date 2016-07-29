@@ -18,7 +18,12 @@ Furthermore, tasks running on Linux can explicitly be classified as real time (R
 Higher priorities in the kernel have a numerical smaller value. Real time priorities range from 1 (highest) – 99 whereas normal priorities range from 100 – 139 (lowest). There can, however, be confusion when using system calls or scheduler library functions to set priorities. There, the numerical order can be reversed and/or mapped to different values (nice values).
 
 
+# 2. 任务分类
 
+## 2.1. CPU 限制 vs. I/O 限制
+
+任务要么是限制在 CPU 要么限制在 I/O。也就是说，一些线程会使用 CPU 进行大量的运算，而另一些则会花费很多时间等待相对较慢的 I/O 操作完成。在本文， I/O 操作可能是等待用户输入，磁盘或网络访问。
+同时这也强烈依赖于任务运行的系统。一个服务器或者 HPC （超级计算机）的负载通常是 CPU 限制任务，而桌面或者移动平台的负载主要是 I/O 限制任务。
 
 
 
