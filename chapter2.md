@@ -1,4 +1,4 @@
-# 2 Task Classification
+# 2. Task Classification
 
 ## 2.1 CPU-bound vs. I/O bound
 

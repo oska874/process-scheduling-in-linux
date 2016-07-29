@@ -6,7 +6,7 @@ The current Linux kernel is a multi-tasking kernel. Therefore, more than one pro
 * pick appropriate process to run next if required, considering scheduling class/policy and process priorities
 * balance processes between multiple cores in SMP systems
 
-## 1.2 Linux Processes/Threads
+## 1.2. Linux Processes/Threads
 
 Processes in Linux are a group of threads that share a thread group ID (TGID) and whatever resources necessary and does not differentiate between the two. The kernel schedules individual threads, not processes. Therefore, the term “task” will be used for the remainder of the document to refer to a thread.
 
@@ -14,7 +14,7 @@ task_struct (include/linux/sched.h) is the data structure used in Linux that con
 
 
 
-# 1 进程调度
+# 1. 进程调度
 
 现在的 Linux 内核是一个多任务内核。因此，任何时刻都可以有不止一个进程存在，并且每个进程运行起来就像系统只存在它自己一个进程。进程调度器负责何时运行那个进程。这种情况下，调度其要完成下面的任务：
 
