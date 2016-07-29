@@ -1,2 +1,2 @@
-# 2. Task Classification
+# 2 Task Classification
 
