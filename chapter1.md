@@ -5,6 +5,19 @@ system. The process scheduler coordinates which process runs when. In that conte
 
 * share CPU equally among all currently running processes 
 * pick appropriate process to run next if required, considering scheduling class/policy and process priorities
-* balance processes between multiple cores in SMP systems 
+* balance processes between multiple cores in SMP systems
+
+## 1.2 Linux Processes/Threads
+
+Processes in Linux are a group of threads that share a thread group ID (TGID) and whatever resources necessary and does not differentiate between the two. The kernel schedules individual threads, not processes. Therefore, the term “task” will be used for the remainder of the document to refer to a thread.
+
+task_struct (include/linux/sched.h) is the data structure used in Linux that contains all the information about a specific task.
+
+
+
+
+
+
+
 
 
