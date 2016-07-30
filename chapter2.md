@@ -16,6 +16,8 @@ Furthermore, tasks running on Linux can explicitly be classified as real time (R
 
 Higher priorities in the kernel have a numerical smaller value. Real time priorities range from 1 (highest) – 99 whereas normal priorities range from 100 – 139 (lowest). There can, however, be confusion when using system calls or scheduler library functions to set priorities. There, the numerical order can be reversed and/or mapped to different values (nice values).
 
+---
+
 # 2. 任务分类
 
 ## 2.1. CPU 限制 vs. I/O 限制
@@ -32,7 +34,7 @@ Linux 操作系统运行在这些系统之上，也因此设计时就是要应�
 
 ## 2.3. 任务优先级值
 
-在内核里，高的优先级在数值上更小。实时任务的优先级从 1（最高）到 99，而普通任务的优先级从 100 到 139（最低）。然而这样又会在使用系统调用或者调度器库函数修改任务优先级时产生混乱。因为数字的顺序可以被反转和/或被映射到不同的值（[nice 值][1]）
+在内核里，高的优先级在数值上更小。实时任务的优先级从 1（最高）到 99，而普通任务的优先级从 100 到 139（最低）。然而这样又会在使用系统调用或者调度器库函数修改任务优先级时产生混乱。因为数字的顺序可以被反转和/或被映射到不同的值（即[nice 值][1]）
 
 
 
