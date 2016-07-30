@@ -137,4 +137,256 @@ Now schedule() checks if pick_next_task() found a new task or if it picked the s
 
 To finish up, the runqueue is unlocked and pre-emption is reenabled. In case pre-emption was requested during the time in which it was disabled, schedule() is run again right away.
 
+## 5.2 Calling the Scheduler
+
+After seeing the entry point into the scheduler, lets now have a look at when the schedule() function is actually called. There are three main occasions when that happens in kernel code:
+
+### 1. Regular runtime update of currently scheduled task
+The function scheduler_tick() is called regularly by a timer interrupt. Its purpose is to update runqueue clock, CPU load and runtime counters of the currently running task.
+
+```
+/*
+* This function gets called by the timer code, with HZ frequency.
+* We call it with interrupts disabled.
+*/
+void scheduler_tick(void)
+{
+    int cpu = smp_processor_id();
+    struct rq *rq = cpu_rq(cpu);
+    struct task_struct *curr = rq->curr;
+    sched_clock_tick();
+    raw_spin_lock(&rq->lock);
+    update_rq_clock(rq);
+    update_cpu_load_active(rq);
+    curr->sched_class->task_tick(rq, curr, 0);
+    raw_spin_unlock(&rq->lock);
+    perf_event_task_tick();
+#ifdef CONFIG_SMP
+    rq->idle_at_tick = idle_cpu(cpu);
+    trigger_load_balance(rq, cpu);
+#endif
+}
+```
+
+You can see, that scheduler_tick() calls the scheduling class hook task_tick() which runs the regular task update for the corresponding class. Internally, the scheduling class can decide if a new task needs to be scheduled an would set the need_resched flag for the task which tells the kernel to invoke schedule() as soon as possible.
+
+At the end of scheduler_tick() you can also see that load balancing is invoked if SMP is configured.
+
+### 2. Currently running task goes to sleep
+
+The process of going to sleep to wait for a specific event to happen is implemented in the Linux kernel for multiple occasions. It usually follows a certain pattern:
+
+```
+/* ‘q’ is the wait queue we wish to sleep on */
+DEFINE_WAIT(wait);
+add_wait_queue(q, &wait);
+while (!condition)   /* condition is the event that we are waiting for */
+{
+    prepare_to_wait(&q, &wait, TASK_INTERRUPTIBLE);
+    if (signal_pending(current))
+        /* handle signal */
+        schedule();
+}
+finish_wait(&q, &wait);
+```
+
+The calling task would create a wait queue and add itself to it. It would then start a loop that waits until a certain condition becomes true. In the loop, it would set its own task state to either TASK_INTERRUPTIBLE or TASK_UNITERRUPTIBLE. If the former is the case, it can be woken up for a pending signal which can then be handled.
+
+If the needed event did not occur yet, it would call schedule() and go to sleep. schedule() would then remove the task from the runqueue (See Scheduler Entry Point). If the condition becomes true, the loop is exited and the task is removed from the wait queue.
+
+You can see here, that schedule() is always called right before a task goes to sleep, to pick another task to run next.
+
+### 3. Sleeping task wakes up
+
+The code that causes the event the sleeping task is waiting for typically calls wake_up() on the corresponding wait queue which eventually ends up in the scheduler function try_to_wake_up() (ttwu).
+This function does three things:
+
+1. It puts the task to be woken back into the runqueue.
+2. It wakes the task up by setting its state to TASK_RUNNING.
+3. If the the awakened task has higher priority than the currently running task, the need_resched flag is set to invoke schedule().
+
+```
+/**
+* try_to_wake_up - wake up a thread
+* @p: the thread to be awakened
+* @state: the mask of task states that can be woken
+* @wake_flags: wake modifier flags (WF_*)
+*
+* Put it on the run-queue if it's not already there. The "current"
+* thread is always on the run-queue (except when the actual
+* re-schedule is in progress), and as such you're allowed to do
+* the simpler "current->state = TASK_RUNNING" to mark yourself
+* runnable without the overhead of this.
+*
+* Returns %true if @p was woken up, %false if it was already running
+* or @state didn't match @p's state.
+*/
+static int
+try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
+{
+    unsigned long flags;
+    int cpu, success = 0;
+    smp_wmb();
+    raw_spin_lock_irqsave(&p->pi_lock, flags);
+    if (!(p->state & state))
+        goto out;
+    success = 1; /* we're going to change ->state */
+    cpu = task_cpu(p);
+    if (p->on_rq && ttwu_remote(p, wake_flags))
+        goto stat;
+#ifdef CONFIG_SMP
+    /*
+    * If the owning (remote) cpu is still in the middle of schedule() with
+    * this task as prev, wait until its done referencing the task.
+    */
+    while (p->on_cpu) {
+#ifdef __ARCH_WANT_INTERRUPTS_ON_CTXSW
+        /*
+        * In case the architecture enables interrupts in
+        * context_switch(), we cannot busy wait, since that
+        * would lead to deadlocks when an interrupt hits and
+        * tries to wake up @prev. So bail and do a complete
+        * remote wakeup.
+        */
+        if (ttwu_activate_remote(p, wake_flags))
+            goto stat;
+#else
+        cpu_relax();
+#endif
+    }
+    /*
+    * Pairs with the smp_wmb() in finish_lock_switch().
+    */
+    smp_rmb();
+    p->sched_contributes_to_load = !!task_contributes_to_load(p);
+    p->state = TASK_WAKING;
+    if (p->sched_class->task_waking)
+        p->sched_class->task_waking(p);
+    cpu = select_task_rq(p, SD_BALANCE_WAKE, wake_flags);
+    if (task_cpu(p) != cpu) {
+        wake_flags |= WF_MIGRATED;
+        set_task_cpu(p, cpu);
+    }
+#endif /* CONFIG_SMP */
+    ttwu_queue(p, cpu);
+stat:
+    ttwu_stat(p, cpu, wake_flags);
+out:
+    raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+    return success;
+}
+```
+
+After some initial error checking and some SMP magic, the function ttwu_queue() is called which does the wake up work.
+
+```
+static void ttwu_queue(struct task_struct *p, int cpu)
+{
+    struct rq *rq = cpu_rq(cpu);
+#if defined(CONFIG_SMP)
+    if (sched_feat(TTWU_QUEUE) && cpu != smp_processor_id()) {
+        sched_clock_cpu(cpu); /* sync clocks x-cpu */
+        ttwu_queue_remote(p, cpu);
+        return;
+    }
+#endif
+    raw_spin_lock(&rq->lock);
+    ttwu_do_activate(rq, p, 0);
+    raw_spin_unlock(&rq->lock);
+}
+static void
+ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags)
+{
+#ifdef CONFIG_SMP
+    if (p->sched_contributes_to_load)
+        rq->nr_uninterruptible--;
+#endif
+    ttwu_activate(rq, p, ENQUEUE_WAKEUP | ENQUEUE_WAKING);
+    ttwu_do_wakeup(rq, p, wake_flags);
+}
+```
+
+This function locks the runqueue and calls ttwu_do_activate() which further calls ttwu_activate() to perform step 1 and ttwu_do_wakeup() to perform step 2 and 3.
+
+```
+static void ttwu_activate(struct rq *rq, struct task_struct *p, int en_flags)
+{
+    activate_task(rq, p, en_flags);
+    p->on_rq = 1;
+    /* if a worker is waking up, notify workqueue */
+    if (p->flags & PF_WQ_WORKER)
+        wq_worker_waking_up(p, cpu_of(rq));
+}
+/*
+* activate_task - move a task to the runqueue.
+*/
+static void activate_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    if (task_contributes_to_load(p))
+        rq->nr_uninterruptible--;
+    enqueue_task(rq, p, flags);
+    inc_nr_running(rq);
+}
+static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    update_rq_clock(rq);
+    sched_info_queued(p);
+    p->sched_class->enqueue_task(rq, p, flags);
+}
+```
+
+If you follow the chain of ttwu_activate() you end up in a call to the corresponding scheduling class hook to enqueue_task() which we already saw in schedule() to put the task back into the runqueue.
+
+```
+/*
+* Mark the task runnable and perform wakeup-preemption.
+*/
+static void
+ttwu_do_wakeup(struct rq *rq, struct task_struct *p, int wake_flags)
+{
+    trace_sched_wakeup(p, true);
+    check_preempt_curr(rq, p, wake_flags);
+    p->state = TASK_RUNNING;
+#ifdef CONFIG_SMP
+    if (p->sched_class->task_woken)
+        p->sched_class->task_woken(rq, p);
+    if (rq->idle_stamp) {
+        u64 delta = rq->clock - rq->idle_stamp;
+        u64 max = 2*sysctl_sched_migration_cost;
+        if (delta > max)
+            rq->avg_idle = max;
+        else
+            update_avg(&rq->avg_idle, delta);
+        rq->idle_stamp = 0;
+    }
+#endif
+}
+static void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
+{
+    const struct sched_class *class;
+    if (p->sched_class == rq->curr->sched_class) {
+        rq->curr->sched_class->check_preempt_curr(rq, p, flags);
+    } else {
+        for_each_class(class) {
+            if (class == rq->curr->sched_class)
+                break;
+            if (class == p->sched_class) {
+                resched_task(rq->curr);
+                break;
+            }
+        }
+    }
+    /*
+    * A queue event has occurred, and we're going to schedule. In
+    * this case, we can save a useless back to back clock update.
+    */
+    if (rq->curr->on_rq && test_tsk_need_resched(rq->curr))
+        rq->skip_clock_update = 1;
+}
+```
+
+ttwu_do_wakeup() checks if the current task needs to be pre-empted by the task being woken up which is now in the runqueue. The function check_preempt_curr() ends up calling the corresponding hook into the scheduling class internally might set the need_resched flag. Afterwards the task's state is set to TASK_RUNNING, which completes the wake up process.
+
+
+
 ---
