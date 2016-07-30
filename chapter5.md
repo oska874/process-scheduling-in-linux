@@ -387,6 +387,82 @@ static void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 
 ttwu_do_wakeup() checks if the current task needs to be pre-empted by the task being woken up which is now in the runqueue. The function check_preempt_curr() ends up calling the corresponding hook into the scheduling class internally might set the need_resched flag. Afterwards the task's state is set to TASK_RUNNING, which completes the wake up process.
 
-
-
 ---
+
+# 5. 调度框架
+
+## 5.1. 调度器入口
+
+进入进程调度器的主入口是函数 `schedule()` ，定义在文件 `kernel/sched.c`。内核其余部分都要使用这个函数来调用进程调度器，决定那个进程运行以及接下来运行那个进程。
+
+`schedule()` 的主要目标是挑选下一个运行的任务，并且把这个进程传给本地变量 `next`。最后它就执行上下文切换进入新的任务。如果只有 `prev` 并且 `prev` 还可以运行，那么重新调度基本上就意味着 `schedule()` 什么都没改变。
+
+```
+/*
+* __schedule() is the main scheduler function.
+*/
+static void __sched __schedule(void)
+{
+    struct task_struct *prev, *next;
+    unsigned long *switch_count;
+    struct rq *rq;
+    int cpu;
+need_resched:
+    preempt_disable();
+    cpu = smp_processor_id();
+    rq = cpu_rq(cpu);
+    rcu_note_context_switch(cpu);
+    prev = rq->curr;
+    schedule_debug(prev);
+    if (sched_feat(HRTICK))
+        hrtick_clear(rq);
+    raw_spin_lock_irq(&rq->lock);
+    switch_count = &prev->nivcsw;
+    if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
+        if (unlikely(signal_pending_state(prev->state, prev))) {
+            prev->state = TASK_RUNNING;
+        } else {
+            deactivate_task(rq, prev, DEQUEUE_SLEEP);
+            prev->on_rq = 0;
+            /*
+            * If a worker went to sleep, notify and ask workqueue
+            * whether it wants to wake up a task to maintain
+            * concurrency.
+            */
+            if (prev->flags & PF_WQ_WORKER) {
+                struct task_struct *to_wakeup;
+                to_wakeup = wq_worker_sleeping(prev, cpu);
+                if (to_wakeup)
+                    try_to_wake_up_local(to_wakeup);
+            }
+        }
+        switch_count = &prev->nvcsw;
+    }
+    pre_schedule(rq, prev);
+    if (unlikely(!rq->nr_running))
+        idle_balance(cpu, rq);
+    put_prev_task(rq, prev);
+    next = pick_next_task(rq);
+    clear_tsk_need_resched(prev);
+    rq->skip_clock_update = 0;
+    if (likely(prev != next)) {
+        rq->nr_switches++;
+        rq->curr = next;
+        ++*switch_count;
+        context_switch(rq, prev, next); /* unlocks the rq */
+        /*
+        * The context switch have flipped the stack from under us
+        * and restored the local variables which were saved when
+        * this task called schedule() in the past. prev == current
+        * is still correct, but it can be moved to another cpu/rq.
+        */
+        cpu = smp_processor_id();
+        rq = cpu_rq(cpu);
+    } else
+        raw_spin_unlock_irq(&rq->lock);
+    post_schedule(rq);
+    preempt_enable_no_resched();
+    if (need_resched())
+        goto need_resched;
+}
+```
