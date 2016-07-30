@@ -12,7 +12,7 @@ Processes in Linux are a group of threads that share a thread group ID (TGID) an
 
 task_struct (include/linux/sched.h) is the data structure used in Linux that contains all the information about a specific task.
 
-
+---
 
 # 1. 进程调度
 
