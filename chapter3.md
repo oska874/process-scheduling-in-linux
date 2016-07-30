@@ -101,7 +101,9 @@ struct sched_class {
 stop_sched_class → rt_sched_class → fair_sched_class → idle_sched_class → NULL
 ```
 
-停止类和空闲类是特殊的调度类。停止类是用来来掉调度每个 CPU 上那些抢占一切任务但不可以被抢占的停止任务，而空闲类是用来调度每个 CPU 上那些没有可运行任务时才会运行的空闲任务（同时也叫交换任务）其它两个就是之前提到的实时任务和普通任务。
+停止类和空闲类是特殊的调度类。停止类是用来来掉调度每个 CPU 上那些抢占一切任务但不可以被抢占的[停止任务][3.1]，而空闲类是用来调度每个 CPU 上那些没有可运行任务时才会运行的空闲任务（同时也叫交换任务）其它两个就是之前提到的实时任务和普通任务。
+
+[3.1]: https://stackoverflow.com/questions/15399782/what-is-the-use-of-stop-sched-class-in-linux-kernel
 
 
 
