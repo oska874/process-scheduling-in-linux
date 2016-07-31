@@ -1,2 +1,2 @@
-# chapter12
+# 12. Resources
 
