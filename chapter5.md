@@ -587,6 +587,86 @@ finish_wait(&q, &wait);
 
 ### 3. 唤醒睡眠任务
 
+产生唤醒睡眠任务的事件的代码通常都会在对应的等待队列上调用 `wake_up()` ，最后终止在调度器函数 `try_to_wake_up()`（ttwu）。
+
+这个函数干三件事：
+
+1. 把将要唤醒的任务放回运行队列。
+2. 通过吧任务的状态设为 `TASK_RUNNING` 来唤醒任务。
+3. 如果唤醒的任务比当前运行的任务的优先级高，则还要设置 `need_resched` 标志来调用 `schedule()`
+
+```
+/**
+* try_to_wake_up - wake up a thread
+* @p: the thread to be awakened
+* @state: the mask of task states that can be woken
+* @wake_flags: wake modifier flags (WF_*)
+*
+* Put it on the run-queue if it's not already there. The "current"
+* thread is always on the run-queue (except when the actual
+* re-schedule is in progress), and as such you're allowed to do
+* the simpler "current->state = TASK_RUNNING" to mark yourself
+* runnable without the overhead of this.
+*
+* Returns %true if @p was woken up, %false if it was already running
+* or @state didn't match @p's state.
+*/
+static int
+try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
+{
+    unsigned long flags;
+    int cpu, success = 0;
+    smp_wmb();
+    raw_spin_lock_irqsave(&p->pi_lock, flags);
+    if (!(p->state & state))
+        goto out;
+    success = 1; /* we're going to change ->state */
+    cpu = task_cpu(p);
+    if (p->on_rq && ttwu_remote(p, wake_flags))
+        goto stat;
+#ifdef CONFIG_SMP
+    /*
+    * If the owning (remote) cpu is still in the middle of schedule() with
+    * this task as prev, wait until its done referencing the task.
+    */
+    while (p->on_cpu) {
+#ifdef __ARCH_WANT_INTERRUPTS_ON_CTXSW
+        /*
+        * In case the architecture enables interrupts in
+        * context_switch(), we cannot busy wait, since that
+        * would lead to deadlocks when an interrupt hits and
+        * tries to wake up @prev. So bail and do a complete
+        * remote wakeup.
+        */
+        if (ttwu_activate_remote(p, wake_flags))
+            goto stat;
+#else
+        cpu_relax();
+#endif
+    }
+    /*
+    * Pairs with the smp_wmb() in finish_lock_switch().
+    */
+    smp_rmb();
+    p->sched_contributes_to_load = !!task_contributes_to_load(p);
+    p->state = TASK_WAKING;
+    if (p->sched_class->task_waking)
+        p->sched_class->task_waking(p);
+    cpu = select_task_rq(p, SD_BALANCE_WAKE, wake_flags);
+    if (task_cpu(p) != cpu) {
+        wake_flags |= WF_MIGRATED;
+        set_task_cpu(p, cpu);
+    }
+#endif /* CONFIG_SMP */
+    ttwu_queue(p, cpu);
+stat:
+    ttwu_stat(p, cpu, wake_flags);
+out:
+    raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+    return success;
+}
+```
+
 
 
 
