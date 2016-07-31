@@ -12,5 +12,5 @@
 * [9 Soft Real-Time Scheduling](chapter9.md)
 * [10 Load Balancing on SMP Systems](chapter10.md)
 * 11 Real Time Load Balancing
-* chapter12
+* [chapter12](chapter12.md)
 
