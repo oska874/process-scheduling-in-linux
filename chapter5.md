@@ -475,7 +475,49 @@ need_resched:
 
 要将一个任务移出运行队列需要在内部调用 `deactivate_task()` ，这个函数会调用该任务所属的调度类的钩子函数 `dequeue_task()`。
 
+```
+static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    update_rq_clock(rq);
+    sched_info_dequeued(p);
+    p->sched_class->dequeue_task(rq, p, flags);
+}
+```
 
+下一个动作是检查当前 CPU 的运行队列是否还有可以运行的任务。如果没有的话就调用 `idle_balance()` 从其他 CPU 获取一些可以运行的任务（参见负载均衡）。
+
+`put_prev_task()` 是一个调度类的钩子函数，使用来告诉任务所属的类这个任务将要被切换出当前 CPU 。
+
+现在就要通过调用 `pick_next_task()` 来命令相应的调度类挑选下一个适合在当前 CPU 上运行的任务。紧接着就是清掉之前最开始为了调用 `schedule()` 而设置的 `need_resched` 标志。
+
+`need_resched` 标志位于结构体 `task_struct` ，并且定期内核会检查该标志。这是一种告诉内核其它任务应该运行了、`schedule()` 函数需要尽快被调用的途径。
+
+```
+/*
+* Pick up the highest-prio task:
+*/
+static inline struct task_struct *
+pick_next_task(struct rq *rq)
+{
+    const struct sched_class *class;
+    struct task_struct *p;
+    /*
+    * Optimization: we know that if all tasks are in
+    * the fair class we can call that function directly:
+    */
+    if (likely(rq->nr_running == rq->cfs.nr_running)) {
+        p = fair_sched_class.pick_next_task(rq);
+        if (likely(p))
+            return p;
+    }
+    for_each_class(class) {
+        p = class->pick_next_task(rq);
+        if (p)
+            return p;
+    }
+    BUG(); /* the idle class will always have a runnable task */
+}
+```
 
 
 
