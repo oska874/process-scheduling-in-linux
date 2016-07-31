@@ -775,28 +775,4 @@ static void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 }
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+`ttwu_do_wakeup()` 要检查当前运行的任务是否要被刚唤醒的现在处于运行队列的任务抢占。 `check_preempt_curr()` 函数内部最后会调用相应调度类的钩子函数，可能会设置 `need_resched` 标志。在任务的标志被设置成 `TASK_RUNNING` 之后，唤醒过程就完了。
