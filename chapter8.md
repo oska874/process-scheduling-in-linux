@@ -1,2 +1,2 @@
-# chapter8
+# 8 CFS Implementation Details
 
