@@ -527,6 +527,60 @@ pick_next_task(struct rq *rq)
 
 ## 5.2. 调用调度器
 
+在看了调度器入口代码之后，让我们来看看实际中何时会调用 `schedule()` 函数。在内核代码中有三个主要的时机会发生任务切换：
+
+### 1. 周期性更新当前调度的任务
+
+函数 `scheduler_tick()` 会被时钟中断周期性调用。它的目标是更新运行队列的始终，CPU 负载以及当前任务的运行时计数器。
+
+```
+/*
+* This function gets called by the timer code, with HZ frequency.
+* We call it with interrupts disabled.
+*/
+void scheduler_tick(void)
+{
+    int cpu = smp_processor_id();
+    struct rq *rq = cpu_rq(cpu);
+    struct task_struct *curr = rq->curr;
+    sched_clock_tick();
+    raw_spin_lock(&rq->lock);
+    update_rq_clock(rq);
+    update_cpu_load_active(rq);
+    curr->sched_class->task_tick(rq, curr, 0);
+    raw_spin_unlock(&rq->lock);
+    perf_event_task_tick();
+#ifdef CONFIG_SMP
+    rq->idle_at_tick = idle_cpu(cpu);
+    trigger_load_balance(rq, cpu);
+#endif
+}
+```
+
+你可以看到 `scheduler_tick()` 调用了调度类的钩子 `task_tick()`，它是相应的调度类用来进行周期性任务更新。在其内部，调度类可以决定一个新任务是否需要被调度，以及为任务设置 `need_resched` 标志来告诉内核尽快调用 `schedule()`.
+
+在 `scheduler_tick()` 结尾，你也可以看到如果设置了 SMP 那么还会调用负载均衡。
+
+### 2. 当前任务需要睡眠
+
+在 Linux 内核的实现中，如果一个进程要等待某个特定事件发生，那么它就要进入睡眠状态。这通常都会遵循一个特定的模式：
+
+```
+/* ‘q’ is the wait queue we wish to sleep on */
+DEFINE_WAIT(wait);
+add_wait_queue(q, &wait);
+while (!condition)   /* condition is the event that we are waiting for */
+{
+    prepare_to_wait(&q, &wait, TASK_INTERRUPTIBLE);
+    if (signal_pending(current))
+        /* handle signal */
+        schedule();
+}
+finish_wait(&q, &wait);
+```
+
+
+
 
 
 
