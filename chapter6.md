@@ -1,2 +1,2 @@
-# chapter6
+# 6 Short Scheduling Algorithm History
 
