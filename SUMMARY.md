@@ -8,4 +8,5 @@
 * [5 Scheduler Skeleton](chapter5.md)
 * [6 Short Scheduling Algorithm History](chapter6.md)
 * [chapter7](chapter7.md)
+* chapter8
 
