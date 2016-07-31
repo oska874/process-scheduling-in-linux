@@ -6,5 +6,5 @@
 * [3 Scheduling Classes](chapter3.md)
 * [4 Main Runqueue](chapter4.md)
 * [5 Scheduler Skeleton](chapter5.md)
-* [chapter6](chapter6.md)
+* [6 Short Scheduling Algorithm History](chapter6.md)
 
