@@ -8,6 +8,6 @@
 * [5 Scheduler Skeleton](chapter5.md)
 * [6 Short Scheduling Algorithm History](chapter6.md)
 * [7 Completely Fair Scheduler (CFS)](chapter7.md)
-* [chapter8](chapter8.md)
+* [8 CFS Implementation Details](chapter8.md)
 * chapter9
 
