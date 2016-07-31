@@ -1,2 +1,2 @@
-# chapter7
+# 7 Completely Fair Scheduler (CFS)
 
