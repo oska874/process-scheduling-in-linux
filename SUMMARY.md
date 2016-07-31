@@ -9,5 +9,5 @@
 * [6 Short Scheduling Algorithm History](chapter6.md)
 * [7 Completely Fair Scheduler (CFS)](chapter7.md)
 * [8 CFS Implementation Details](chapter8.md)
-* [chapter9](9 Soft Real-Time Scheduling)
+* [chapter9](chapter9.md)
 
