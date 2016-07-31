@@ -11,6 +11,6 @@
 * [8 CFS Implementation Details](chapter8.md)
 * [9 Soft Real-Time Scheduling](chapter9.md)
 * [10 Load Balancing on SMP Systems](chapter10.md)
-* 11 Real Time Load Balancing
+* chapter11
 * [12. Resources](chapter12.md)
 
