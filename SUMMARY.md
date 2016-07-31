@@ -7,7 +7,7 @@
 * [4 Main Runqueue](chapter4.md)
 * [5 Scheduler Skeleton](chapter5.md)
 * [6 Short Scheduling Algorithm History](chapter6.md)
-* [chapter7](chapter7.md)
+* [7 Completely Fair Scheduler (CFS)](chapter7.md)
 * chapter8
 * chapter9
 
