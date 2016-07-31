@@ -12,4 +12,5 @@
 * [9 Soft Real-Time Scheduling](chapter9.md)
 * chapter10
 * chapter11
+* chapter12
 
