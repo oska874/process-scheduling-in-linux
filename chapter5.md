@@ -592,7 +592,7 @@ finish_wait(&q, &wait);
 这个函数干三件事：
 
 1. 把将要唤醒的任务放回运行队列。
-2. 通过吧任务的状态设为 `TASK_RUNNING` 来唤醒任务。
+2. 通过把任务的状态设为 `TASK_RUNNING` 来唤醒任务。
 3. 如果唤醒的任务比当前运行的任务的优先级高，则还要设置 `need_resched` 标志来调用 `schedule()`
 
 ```
@@ -666,6 +666,115 @@ out:
     return success;
 }
 ```
+
+在做了一些初始错误检查和 SMP 技巧之后就调用 `ttwu_queue()` 进行唤醒工作。
+
+```
+static void ttwu_queue(struct task_struct *p, int cpu)
+{
+    struct rq *rq = cpu_rq(cpu);
+#if defined(CONFIG_SMP)
+    if (sched_feat(TTWU_QUEUE) && cpu != smp_processor_id()) {
+        sched_clock_cpu(cpu); /* sync clocks x-cpu */
+        ttwu_queue_remote(p, cpu);
+        return;
+    }
+#endif
+    raw_spin_lock(&rq->lock);
+    ttwu_do_activate(rq, p, 0);
+    raw_spin_unlock(&rq->lock);
+}
+static void
+ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags)
+{
+#ifdef CONFIG_SMP
+    if (p->sched_contributes_to_load)
+        rq->nr_uninterruptible--;
+#endif
+    ttwu_activate(rq, p, ENQUEUE_WAKEUP | ENQUEUE_WAKING);
+    ttwu_do_wakeup(rq, p, wake_flags);
+}
+```
+
+`ttwu_queue()` 函数锁定了运行队列并调用 `ttwu_do_activate()` ，而 `ttwu_do_activate()` 又会调用 `ttwu_activate()` 执行步骤 1 ，而 `ttwu_do_wakeup()` 会去执行步骤 2 和 3。
+
+```
+static void ttwu_activate(struct rq *rq, struct task_struct *p, int en_flags)
+{
+    activate_task(rq, p, en_flags);
+    p->on_rq = 1;
+    /* if a worker is waking up, notify workqueue */
+    if (p->flags & PF_WQ_WORKER)
+        wq_worker_waking_up(p, cpu_of(rq));
+}
+/*
+* activate_task - move a task to the runqueue.
+*/
+static void activate_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    if (task_contributes_to_load(p))
+        rq->nr_uninterruptible--;
+    enqueue_task(rq, p, flags);
+    inc_nr_running(rq);
+}
+static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    update_rq_clock(rq);
+    sched_info_queued(p);
+    p->sched_class->enqueue_task(rq, p, flags);
+}
+```
+
+如果你跟随 `ttwu_activate()` 的调用链，最终在会停在 `enqueue_task()` 调用相应的调度类的钩子函数，而 `enqueue_task()` 就是我们之前在 `schedule()` 看到的用来把任务放回运行队列的函数。
+
+```
+/*
+* Mark the task runnable and perform wakeup-preemption.
+*/
+static void
+ttwu_do_wakeup(struct rq *rq, struct task_struct *p, int wake_flags)
+{
+    trace_sched_wakeup(p, true);
+    check_preempt_curr(rq, p, wake_flags);
+    p->state = TASK_RUNNING;
+#ifdef CONFIG_SMP
+    if (p->sched_class->task_woken)
+        p->sched_class->task_woken(rq, p);
+    if (rq->idle_stamp) {
+        u64 delta = rq->clock - rq->idle_stamp;
+        u64 max = 2*sysctl_sched_migration_cost;
+        if (delta > max)
+            rq->avg_idle = max;
+        else
+            update_avg(&rq->avg_idle, delta);
+        rq->idle_stamp = 0;
+    }
+#endif
+}
+static void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
+{
+    const struct sched_class *class;
+    if (p->sched_class == rq->curr->sched_class) {
+        rq->curr->sched_class->check_preempt_curr(rq, p, flags);
+    } else {
+        for_each_class(class) {
+            if (class == rq->curr->sched_class)
+                break;
+            if (class == p->sched_class) {
+                resched_task(rq->curr);
+                break;
+            }
+        }
+    }
+    /*
+    * A queue event has occurred, and we're going to schedule. In
+    * this case, we can save a useless back to back clock update.
+    */
+    if (rq->curr->on_rq && test_tsk_need_resched(rq->curr))
+        rq->skip_clock_update = 1;
+}
+```
+
 
 
 
