@@ -10,7 +10,7 @@
 * [7 Completely Fair Scheduler (CFS)](chapter7.md)
 * [8 CFS Implementation Details](chapter8.md)
 * [9 Soft Real-Time Scheduling](chapter9.md)
-* chapter10
+* [chapter10](chapter10.md)
 * chapter11
 * chapter12
 
