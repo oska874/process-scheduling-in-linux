@@ -11,4 +11,5 @@
 * [8 CFS Implementation Details](chapter8.md)
 * [9 Soft Real-Time Scheduling](chapter9.md)
 * chapter10
+* chapter11
 
