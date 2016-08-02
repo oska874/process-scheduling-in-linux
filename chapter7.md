@@ -24,7 +24,7 @@ A task is prioritised above another by weighting how fast its vruntime grows whi
 
 ## 7.3. Handling I/O and CPU bound tasks
 
-The previous scheduling algorithm, the O(1) scheduler, tried to use heuristic of sleep and runtimes to determine if a task is I\/O or CPU bound. It would then benefit one or the other. As it turned out later, this concept did not work quite as satisfying as expected due to the complex and error prone heuristics.
+The previous scheduling algorithm, the O(1) scheduler, tried to use heuristic of sleep and runtimes to determine if a task is I/O or CPU bound. It would then benefit one or the other. As it turned out later, this concept did not work quite as satisfying as expected due to the complex and error prone heuristics.
 
 CFS' concept of giving tasks a fair share of the processor works quite well and is easy to apply. I would like to explain how this works using the example given in Robert Love's Linux Kernel Development:
 
@@ -66,3 +66,29 @@ CFS 算法是基于一个完美的多任务处理器的想法。这样一个处�
 这个原则是基于给定的全部可运行任务是公平分享处理器的。全部份额会随着运行中的处理器个数变化而增加或者减少，而相对份额会基于任务的优先级变化而增加或减少。
 
 ## 7.1. 时间片 vs. 虚拟运行时
+
+在 CFS 调度算法中，将每个任务的时间划分成固定长度的时间片这种传统模型已经不再存在了。作为替代，每个任务都引入了虚拟运行时（vruntime）。在为每一个使用 CFS 调度的任务执行 `scheduler_tick()` 时，在任务被调度以后，它的 vruntime 会和流逝的时间一起更新。一旦运行队列中另一个任务的 vruntime 比当前任务的小，那么就会执行一次任务调度，接下来 vruntime 最小的任务就会得到执行。
+
+为了避免因为频繁进行任务切换而造成任务调度开销过大， Linux 引入了调度延迟和最小任务运行时间粒度。
+
+目标调度延迟（TSL）是一个用来计算最小任务运行时间的常量。假如 TSL 是 20 ms，而我们有两个运行中的同等优先级任务。每个任务都会在被对方抢占前运行 10ms。
+
+如果任务的数量在增加，则这部分的运行时会减少，甚至为 0 ，这就会导致一个毫无效率的切换速率。要应对这点，引入了常量“最小粒度”，根据运行中任务的数量来扩大 TSL 。
+
+## 7.2. 优先级
+
+调度中任务的 vruntime 增长的速度来决定了一个任务是否比另一个任务优先级高。时间差产生的原因是任务的调度是根据任务的优先级决定的。这也意味着高优先级任务的 vruntime 增长的要比低优先级任务慢。
+
+## 7.3. 应对 I/O 限制型和 CPU 限制型任务
+
+在之前的调度算法中， O(1) 调度其尝试使用启发式的睡眠和运行时来决定一个任务是 I/O 限制型任务还是 CPU 限制型任务。这样就可以让某个比另一个更占优势。根据之后的结果发现这个原则并不能满足预期的工作要求，因为启发法太复杂了而且容易出错。
+
+而 CFS 的原则是为每个任务提供公平的计算机使用，实际工作效果相当好，也容易应用。我打算用 Robert Love 的 Linux Kernel Development 中的例子来解释 CFS 是怎么工作的 ：
+
+考虑一个系统有两个可运行的任务：一个文本编辑器和一个视频编码器。文本编辑器是 I/O 限制型任务因为它花费了几乎全部的时间在等待用户的按键输入。然而当文本编辑器捕获到键盘按下后，用户就期待它立即响应。对应的，视频编码器就是一个处理器限制型任务。
+
+除了从磁盘读取原始的数据流和将结果写入视频文件，编码器几乎全部的时间都用在了编解码视频原始数据上，很轻松的就会使用了 100% 的处理器。视频编码对何时运行并没有很强的限制——用户是不可能区分出是立刻运行还是半秒之后运行的，他们也不关心这一点。当然了，越快完成越好，但是延迟并不一个主要考虑的因素。在这种场景下，理想的调度其会给文本编辑器相较于视频编码器更多的处理器时间，因为文本编辑器是交互型的。我们对文本编辑器有两个目标。第一，我们希望他有大量可用的处理器时间；不是因为他需要大量处理器时间（它并不需要）而是因为我们希望他在需要处理器时总可以使用处理器。第二，我们希望文本编辑器在被唤醒时可以抢占视频编码器（也就是在当用户按下按键时）。这一点可以保证文本编辑器能够提供很好的交互性能和及时的响应用户输入。
+
+CFS 通过下面的办法解决了这个问题：调度器保证文本编辑器有特定的处理器时间比例而不是赋给他特定的优先级和时间片。如果视频编码器和文本编辑器是仅有的运行中的进程，并且有着相同的友好级（nice level），这个比例可以是 50% —— 每个任务都保证占有一半的处理器时间。因为文本编辑器把大部分的时间花费到了阻塞上，等待用输入，所以他它没有用尽 10% 的处理器。相对的，视频编码器能够自由使用超过分配给自己的 50% 的处理器，这就是他能够快速的完成编码工作。
+
+一个重要的原则当文本编辑器被唤醒时。我们的主要目标是保证它能根据用户的输入立即运行。在这种情况下，当编辑器唤醒后， CFS 注意到它分配了 50% 的处理器但是相当大的部分并没有使用。特别的是， CFS 确定了文本编辑器已经运行的时间比视频编码器要少。调度器会尝试给全部进程分配公平的的处理器时间，然后抢占了视频编码器并让文本编辑器开始运行。文本编辑器开始运行，迅速的处理用户的按下的按键，然后就进入睡眠等待更多的输入。因为文本编辑器并没有消耗完分配给它的 50% 处理器，我们继续这个方式， CFS 总会让文本编辑器能够在它想运行的时刻运行，然后视频编码器会运行在剩余的时间。
