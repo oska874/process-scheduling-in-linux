@@ -116,4 +116,25 @@ nohz_balancer_kick(cpu);
 }
 ```
 
+The function registered as irq handler is run_rebalance_domains() which calls rebalance_domains() to perform the actual work.
 
+```
+/*
+* run_rebalance_domains is triggered when needed from the scheduler tick.
+* Also triggered for nohz idle balancing (with nohz_balancing_kick set).
+*/
+static void run_rebalance_domains(struct softirq_action *h)
+{
+int this_cpu = smp_processor_id();
+struct rq *this_rq = cpu_rq(this_cpu);
+enum cpu_idle_type idle = this_rq->idle_at_tick ?
+CPU_IDLE : CPU_NOT_IDLE;
+rebalance_domains(this_cpu, idle);
+/*
+* If this cpu has a pending nohz_balance_kick, then do the
+* balancing on behalf of the other idle cpus whose ticks are
+* stopped.
+*/
+nohz_idle_balance(this_cpu, idle);
+}
+```
