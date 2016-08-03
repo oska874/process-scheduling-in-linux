@@ -266,7 +266,8 @@ check_preempt_tick(cfs_rq, curr);
 
 update_curr() is the responsible function to update the current task's runtime statistics. It calculates the elapsed time since the current task was scheduled last and passes the result, delta_exec, on to __update_curr().
 
-```static void update_curr(struct cfs_rq *cfs_rq)
+```
+static void update_curr(struct cfs_rq *cfs_rq)
 
 {
 
@@ -317,45 +318,27 @@ account_group_exec_runtime(curtask, delta_exec);
 
 The runtime delta is weighted by current task's priority, which is encoded in load_weigth, and the result is added to the current task's vruntime. This is the location where vruntime grows faster or slower, depending on the task' priority. You can also see that __update_curr() updates min_vruntime.
 
+
 ```
 /*
-
-* Update the current task's runtime statistics. Skip current tasks that
-
-* are not in our scheduling class.
-
+ * Update the current task's runtime statistics. Skip current tasks that
+ * are not in our scheduling class.
 */
 
-static inline void
-
-__update_curr(struct cfs_rq *cfs_rq, struct sched_entity *curr,
-
-unsigned long delta_exec)
-
+static inline void __update_curr(struct cfs_rq *cfs_rq, struct sched_entity *curr,unsigned long delta_exec)
 {
 
 unsigned long delta_exec_weighted;
-
-schedstat_set(curr->statistics.exec_max,
-
-max((u64)delta_exec, curr->statistics.exec_max));
-
+schedstat_set(curr->statistics.exec_max,max((u64)delta_exec, curr->statistics.exec_max));
 curr->sum_exec_runtime += delta_exec;
-
 schedstat_add(cfs_rq, exec_clock, delta_exec);
-
 delta_exec_weighted = calc_delta_fair(delta_exec, curr);
-
 curr->vruntime += delta_exec_weighted;
-
 update_min_vruntime(cfs_rq);
-
-#if defined CONFIG_SMP && defined CONFIG_FAIR_GROUP_SCHED
+#if defined CONFIG_SMP && defined  CONFIG_FAIR_GROUP_SCHED
 
 cfs_rq->load_unacc_exec_time += delta_exec;
-
 #endif
-
 }
 ```
 
@@ -364,7 +347,8 @@ In addition to this regular update, update_current() is also called if the corre
 Back to entity_tick(). After the current task was updated, check_preempt_tick() is called to satisfy CFS' concept of giving each task a fair share. vruntime of the current process is checked against vruntime of the left most task in the red-black-tree to decide if a process switch is necessary.
 
 
-```/*
+```
+/*
 
 * Preempt the current task with a newly woken task if needed:
 
@@ -504,7 +488,8 @@ list_add_leaf_cfs_rq(cfs_rq);
 
 Removing a node works in a similar way. First, vruntime is updated and then the task is removed from the tree using __dequeue_entity().
 
-```static void
+```
+static void
 
 dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags){
 
@@ -570,7 +555,8 @@ update_min_vruntime(cfs_rq);
 
 update_cfs_shares(cfs_rq);
 
-}```
+}
+```
 
 The additional calls you see are necessary for group scheduling, scheduling statistic updates and the buddy system which is used for picking the next task to run.
 
@@ -580,7 +566,8 @@ The main scheduler function schedule() calls pick_next_task() of the scheduling 
 
 If no tasks are in this class, NULL is returned immediately. Otherwise pick_next_entity() is called to select the next task from the tree. This is then forwarded to set_next_entity() which removes it from the tree since scheduled processes are not allowed in there. The while loop is used to account for fair group scheduling.
 
-```static struct task_struct *pick_next_task_fair(struct rq *rq)
+```
+static struct task_struct *pick_next_task_fair(struct rq *rq)
 
 {
 
@@ -608,11 +595,13 @@ hrtick_start_fair(rq, p);
 
 return p;
 
-}```
+}
+```
 
 In pick_next_entity() not necessarily the left most task is picked to run next. A buddy system gives a certain degree of freedom in selecting the next task to run. This is supposed to benefit cache locality and group scheduling.
 
-```/*
+```
+/*
 
 * Pick the next process, keeping these things in mind, in this order:
 
@@ -676,11 +665,13 @@ clear_buddies(cfs_rq, se);
 
 return se;
 
-}```
+}
+```
 
 __pick_first_entity() picks the left most node from the tree, which is very easy and fast as you can see below:
 
-```static struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
+```
+static struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 
 {
 
@@ -692,7 +683,8 @@ return NULL;
 
 return rb_entry(left, struct sched_entity, run_node);
 
-}```
+}
+```
 
 
 
