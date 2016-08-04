@@ -28,17 +28,17 @@ sched_rt_entity is implemented in /include/linux/sched.h. It has fields for time
 
 ```
 struct sched_rt_entity {
-struct list_head run_list;
-unsigned long timeout;
-unsigned int time_slice;
-int nr_cpus_allowed;
-struct sched_rt_entity *back;
+    struct list_head run_list;
+    unsigned long timeout;
+    unsigned int time_slice;
+    int nr_cpus_allowed;
+    struct sched_rt_entity *back;
 #ifdef CONFIG_RT_GROUP_SCHED
-struct sched_rt_entity*parent;
-/* rq on which this entity is (to be) queued: */
-struct rt_rq *rt_rq;
-/* rq "owned" by this entity/group: */
-struct rt_rq *my_q;
+    struct sched_rt_entity*parent;
+    /* rq on which this entity is (to be) queued: */
+    struct rt_rq *rt_rq;
+    /* rq "owned" by this entity/group: */
+    struct rt_rq *my_q;
 #endif
 };
 ```
@@ -48,32 +48,32 @@ rt_rq is implemented in kernel/sched.c. The first field holds the priority array
 ```
 /* Real-Time classes' related field in a runqueue: */
 struct rt_rq {
-struct rt_prio_array active;
-unsigned long rt_nr_running;
+    struct rt_prio_array active;
+    unsigned long rt_nr_running;
 #if defined CONFIG_SMP || defined CONFIG_RT_GROUP_SCHED
-struct {
-int curr; /* highest queued rt task prio */
+    struct {
+        int curr; /* highest queued rt task prio */
 #ifdef CONFIG_SMP
-int next; /* next highest */
+        int next; /* next highest */
 #endif
-} highest_prio;
+    } highest_prio;
 #endif
 #ifdef CONFIG_SMP
-unsigned long rt_nr_migratory;
-unsigned long rt_nr_total;
-int overloaded;
-struct plist_head pushable_tasks;
+    unsigned long rt_nr_migratory;
+    unsigned long rt_nr_total;
+    int overloaded;
+    struct plist_head pushable_tasks;
 #endif
-int rt_throttled;
-u64 rt_time;
-u64 rt_runtime;
-/* Nests inside the rq lock: */
-raw_spinlock_t rt_runtime_lock;
+    int rt_throttled;
+    u64 rt_time;
+    u64 rt_runtime;
+    /* Nests inside the rq lock: */
+    raw_spinlock_t rt_runtime_lock;
 #ifdef CONFIG_RT_GROUP_SCHED
-unsigned long rt_nr_boosted;
-struct rq *rq;
-struct list_head leaf_rt_rq_list;
-struct task_group *tg;
+    unsigned long rt_nr_boosted;
+    struct rq *rq;
+    struct list_head leaf_rt_rq_list;
+    struct task_group *tg;
 #endif
 };
 ```
@@ -87,25 +87,25 @@ If not, the RR task's timeslice is reduced by one. If it reaches 0, it is set ba
 ```
 static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 {
-update_curr_rt(rq);
-watchdog(rq, p);
-/*
-* RR tasks need a special form of timeslice management.
-* FIFO tasks have no timeslices.
-*/
-if (p->policy != SCHED_RR)
-return;
-if (--p->rt.time_slice)
-return;
-p->rt.time_slice = DEF_TIMESLICE;
-/*
-* Requeue to the end of queue if we are not the only element
-* on the queue:
-*/
-if (p->rt.run_list.prev != p->rt.run_list.next) {
-requeue_task_rt(rq, p, 0);
-set_tsk_need_resched(p);
-}
+    update_curr_rt(rq);
+    watchdog(rq, p);
+    /*
+    * RR tasks need a special form of timeslice management.
+    * FIFO tasks have no timeslices.
+    */
+    if (p->policy != SCHED_RR)
+        return;
+    if (--p->rt.time_slice)
+        return;
+    p->rt.time_slice = DEF_TIMESLICE;
+    /*
+    * Requeue to the end of queue if we are not the only element
+    * on the queue:
+    */
+    if (p->rt.run_list.prev != p->rt.run_list.next) {
+        requeue_task_rt(rq, p, 0);
+        set_tsk_need_resched(p);
+    }
 }
 ```
 
@@ -116,18 +116,18 @@ As said earlier, picking the next task to run can be done with constant time com
 ```
 static struct task_struct *pick_next_task_rt(struct rq *rq)
 {
-struct task_struct *p = _pick_next_task_rt(rq);
-/* The running task is never eligible for pushing */
-if (p)
-dequeue_pushable_task(rq, p);
+    struct task_struct *p = _pick_next_task_rt(rq);
+    /* The running task is never eligible for pushing */
+    if (p)
+        dequeue_pushable_task(rq, p);
 #ifdef CONFIG_SMP
-/*
-* We detect this state here so that we can avoid taking the RQ
-* lock again later if there is no need to push
-*/
-rq->post_schedule = has_pushable_tasks(rq);
+    /*
+    * We detect this state here so that we can avoid taking the RQ
+    * lock again later if there is no need to push
+    */
+    rq->post_schedule = has_pushable_tasks(rq);
 #endif
-return p;
+    return p;
 }
 ```
 
@@ -136,22 +136,22 @@ If no tasks are runnable, NULL is returned and a different scheduling class will
 ```
 static struct task_struct *_pick_next_task_rt(struct rq *rq)
 {
-struct sched_rt_entity *rt_se;
-struct task_struct *p;
-struct rt_rq *rt_rq;
-rt_rq = &rq->rt;
-if (!rt_rq->rt_nr_running)
-return NULL;
-if (rt_rq_throttled(rt_rq))
-return NULL;
-do {
-rt_se = pick_next_rt_entity(rq, rt_rq);
-BUG_ON(!rt_se);
-rt_rq = group_rt_rq(rt_se);
-} while (rt_rq);
-p = rt_task_of(rt_se);
-p->se.exec_start = rq->clock_task;
-return p;
+    struct sched_rt_entity *rt_se;
+    struct task_struct *p;
+    struct rt_rq *rt_rq;
+    rt_rq = &rq->rt;
+    if (!rt_rq->rt_nr_running)
+        return NULL;
+    if (rt_rq_throttled(rt_rq))
+        return NULL;
+    do {
+        rt_se = pick_next_rt_entity(rq, rt_rq);
+        BUG_ON(!rt_se);
+        rt_rq = group_rt_rq(rt_se);
+    } while (rt_rq);
+    p = rt_task_of(rt_se);
+    p->se.exec_start = rq->clock_task;
+    return p;
 }
 ```
 
@@ -159,17 +159,17 @@ In pick_next_rt_entity() you can see how a bitmap is used for all priority level
 
 ```
 static struct sched_rt_entity *pick_next_rt_entity(struct rq *rq,
-struct rt_rq *rt_rq)
+        struct rt_rq *rt_rq)
 {
-struct rt_prio_array *array = &rt_rq->active;
-struct sched_rt_entity *next = NULL;
-struct list_head *queue;
-int idx;
-idx = sched_find_first_bit(array->bitmap);
-BUG_ON(idx >= MAX_RT_PRIO);
-queue = array->queue + idx;
-next = list_entry(queue->next, struct sched_rt_entity, run_list);
-return next;
+    struct rt_prio_array *array = &rt_rq->active;
+    struct sched_rt_entity *next = NULL;
+    struct list_head *queue;
+    int idx;
+    idx = sched_find_first_bit(array->bitmap);
+    BUG_ON(idx >= MAX_RT_PRIO);
+    queue = array->queue + idx;
+    next = list_entry(queue->next, struct sched_rt_entity, run_list);
+    return next;
 }
 ```
 
