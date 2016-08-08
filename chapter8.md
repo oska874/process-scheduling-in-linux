@@ -422,7 +422,7 @@ static struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 
 ## 8.1. 数据结构
 
-CFS 调度器为 Linux 的进程调度器引入了一个名叫 `sched_entity` 的结构体。它最主要的用处是审计单个任务的时间，并且作为一个成员添加到了每个任务的 `task_struct` 结构体中。它定义在文件 `include/linux/sched.h` 中：
+CFS 调度器为 Linux 的进程调度器引入了一个名叫 `sched_entity` 的结构体。它最主要的用处是记录单个任务的运行时间，并且作为一个成员添加到了每个任务的 `task_struct` 结构体中。它定义在文件 `include/linux/sched.h` 中：
 
 ```
 struct sched_entity {
@@ -452,7 +452,7 @@ struct sched_entity {
 };
 ```
 
-另一个和 CFS 相关的领域是一个添加到运行队列的数据结构的成员变量 `cfs`。它的类型是 `cfs_rq` ，在文件 `kernel/sched.c` 中实现。它包含一个由指向全部运行中的 CFS 任务的指针的链表，CFS 调度器的红黑树的根，一个只想最左边节点的指针，最小虚拟时间（min_vruntime)，指向前一个任务和当前调度的任务的指针以及额外的用于公平组调度和 SMP 调度和负载运行的成员变量。任务的优先级已经编码到了 `load_weight` 数据结构中。
+另一个和 CFS 相关的字段是一个添加到运行队列的数据结构的成员变量 `cfs`。它的类型是 `cfs_rq` ，在文件 `kernel/sched.c` 中实现。它包含一个由指向全部运行中的 CFS 任务的指针的链表，CFS 调度器的红黑树的根，一个指向最左边节点的指针，最小虚拟运行时（`min_vruntime`)，指向前一个任务和当前调度的任务的指针以及额外的用于公平组调度和 SMP 调度和负载运行的成员变量。任务的优先级已经编码到了 `load_weight` 数据结构中。
 
 ```
 /* CFS-related fields in a runqueue */
@@ -583,7 +583,7 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 }
 ```
 
-函数 `update_curr()` 负责更新当前任务的运行时数据。它会计算当前任务自从上次被调用以后使用了的时间，然后使用函数 `__update_curr()` 传递结果 `delta_exec` 。
+函数 `update_curr()` 负责更新当前任务的运行时数据。它会计算当前任务自从上次被调用以后使用了的时间，然后使用函数 `__update_curr()` 将结果 `delta_exec` 传给出去。
 
 ```
 static void update_curr(struct cfs_rq *cfs_rq)
@@ -721,7 +721,7 @@ static void dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int f
 
 ## 8.4. 挑选下一个可运行的任务
 
-主要的调度函数 `schedule()` 会调用拥有可运行任务的最高优先级的调度类的 `pick_next_task()` 。如果调用的是 CFS 调度类的这个函数，调度类钩子函数会调用 `pick_next_task_fair()`。
+主调度函数 `schedule()` 会调用拥有可运行任务的最高优先级的调度类的 `pick_next_task()` 。如果调用的是 CFS 调度类的这个函数，调度类钩子函数会调用 `pick_next_task_fair()`。
 
 如果这个调度类中没有任务，则直接返回 `NULL`。否则调用 `pick_next_entity()` 从树中挑选下一个任务。之后会转发给 `set_next_entity()` 来将任务从树上删除，因为调度了的进程是不允许继续存在这里。这个 `while` 循环使用来进行公平组调度的。
 
