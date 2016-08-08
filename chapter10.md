@@ -367,14 +367,11 @@ Each scheduling class implements its own strategy to handle their tasks and prov
 
 ---
 
-
 # 10. SMP 系统下的负载均衡
 
 引入负载均衡的主要目的是通过将任务从负载重的处理器转移到负载轻的处理器上来提高整个 SMP 系统的性能。Linux 的任务调度器会周期性检查任务负载是如何扩散到整个系统，以及是否有必要执行负载均衡。
 
-负载均衡的复杂之处在于要服务各种各样拓扑结构的 SMP 系统。
-
-有些多物理处理器核心的系统，要将任务调度到不同的 CPU 上要比在本身已经负载重的 CPU 上多忍受一次清洗缓存（cache）的操作。而对支持超线程的系统，因为是共享缓存的缘故，相同的场景下调度任务到不同的处理器更灵活。NUMA 家头创造了一个场景：不同的节点访问不同区域的主内存速度不同。
+负载均衡的复杂之处在于要服务各种各样拓扑结构的 SMP 系统。有些多物理处理器核心的系统，要将任务调度到不同的 CPU 上要比在本身已经负载重的 CPU 上多忍受一次清洗缓存（cache）的操作。而对支持超线程的系统，因为是共享缓存的缘故，相同的场景下调度任务到不同的处理器更灵活。NUMA 家头创造了一个场景：不同的节点访问不同区域的主内存速度不同。
 
 为了解决拓扑结构多样性的问题，在 2.6 版的 Linux 内核引入了调度域的概念。这种方案按层次结构将系统中所有可用的 CPU 分组，这就使得内核有了一种办法描述下层的处理器核心拓扑结构。
 
@@ -397,7 +394,6 @@ Each scheduling class implements its own strategy to handle their tasks and prov
 ## 10.2. 负载均衡
 
 每个调度域都有一个只在本级有效均衡策略集。这个策略的参数包含每隔多长时间要尝试在整个域内进行一次负载均衡，how far the loads on the component processors are allowed to get out of sync before a balancing attempt is made，how long a process can sit idle before it is considered to no longer have any significant cache affinity.
-
 
 最重要的是不同的的策略标志指定了特定情况下的调度行为，比如：一个 CPU 进入空闲；负载均衡应该给它提供一个任务吗？唤醒或创建一个任务；应该调度到那个 CPU 上执行？
 
@@ -470,7 +466,6 @@ struct sched_group {
 
 在调度器初始化的时候系统会注册一个软中断处理程序来定期的执行负载均衡。触发时机在 `scheduler_tick()` 调用 `trigger_load_balance()` （参见调度框架）时。`trigger_load_balance()` 会检查定时器，如果进行均衡的时间点到了则会通过对应的标志 `SCHED_SOFTIRQ` 启动这个软中断。
 
-
 ```
 /*
 * Trigger the SCHED_SOFTIRQ if it is time to do periodic load balancing.
@@ -512,6 +507,8 @@ static void run_rebalance_domains(struct softirq_action *h)
 ```
 
 `rebalance_domains()` 之后会遍历整个域层级，然后如果这个域的标志 `SD_LOAD_BALANCE` 被设置了并且均衡间隔到期了就调用 `load_balance()` 。一个域的均衡间隔是以 jiffies 计算，每次执行均衡之后会更新。
+
+注意，积极均衡对于执行它的 CPU 来说是一个拉取操作。他将或从一个过载的 CPU 上拉取一个任务到当前的处理器以此来重新让任务分配平衡，但是他不会吧自己的任务推送给其他处理器。执行这个拉取操作的函数是`load_balance()`。如果它可以找到一个不平衡的组，他也会移动一个或更多的任务到当前 CPU 并且返回一个比 0 大的值。
 
 ```
 /*
@@ -584,7 +581,7 @@ out:
 
 `load_balance()` 调用 `find_busiest_group()` 来在给定的 `sched_domain`（调度域）寻找不均衡然后如果能找到最繁忙的组的话就返回这个组。如果系统处于均衡状态而且没有找到不均衡的组， `load_balance()` 返回。
 
-故国返回了一个组，这个组就被传给 `find_busiest_queue()` 来寻找组中最忙的逻辑 CPU 的运行队列。
+如果返回了一个组，这个组就被传给 `find_busiest_queue()` 来寻找组中最忙的逻辑 CPU 的运行队列。
 
 `load_balance()` 接着搜寻返回的运行队列，通过 `move_tasks()` 挑选一个要从当前 CPU 的队列移出的任务。在 `find_busiest_group()` 中设置的不均衡参数指定了要移出的任务的数量。可能会发生这样的情况：因为缓存亲和力的缘故队列中的全部任务都被固定了。这种情况下 `load_balance()` 会再次搜索但是会排除之前找到的 CPU 。
 
@@ -664,3 +661,75 @@ out:
     return ld_moved;
 }
 ```
+
+一个和节省能源相关的方法隐藏在函数 `find_busiest_group()` 中。如果设置了域策略的 `SD_POWERSAVINGS_BALANCE` 标志，而且没有找到最繁忙的组，则 `find_busiest_group()` 会寻找调度域中负载最低的组，所以这个处理器就可以进入空闲模式了。而在 Android 使用的内核中这个特性并没有激活，而且 Ubuntu 也取消了这个功能。
+
+### 空闲平衡
+
+一旦 CPU 进入空闲模式就会执行空闲平衡操作。因此如果运行队列变空（参见调度框架），则执行当前调度线程的 CPU 会在 `schedule()` 中执行空闲平衡操作。
+
+和积极平衡类似， `idle_balance()` 的实现位于 `sched_fair.c` 中。首先，他会检查空闲的运行队列的平均空闲时间是否比将任务迁移过去还要长，这实际上就是说系统会检查是否值得迁移任务或者仅仅保持现状就好了，因为下一个任务很快就会被唤醒了。
+
+如果前一任务起作用，`idle_balance()` 的功能更类似 `rebalance_domains()` 。它会遍历域层级然后调用在设置了标志 SD_LOAD_BALANCE 和 SD_BALANCE_NEWIDLE 的域中执行 `idle_balance()` 。一个域的均衡间隔是以
+
+如果一个或多个任务被拉过来，则遍历层级会终止然后 `idle_balance()` 返回。
+
+```
+/*
+ * idle_balance is called by schedule() if this_cpu is about to become
+ * idle. Attempts to pull tasks from other CPUs.
+ */
+static void idle_balance(int this_cpu, struct rq *this_rq)
+{
+    struct sched_domain *sd;
+    int pulled_task = 0;
+    unsigned long next_balance = jiffies + HZ;
+    this_rq->idle_stamp = this_rq->clock;
+    if (this_rq->avg_idle < sysctl_sched_migration_cost)
+        return;
+    /*
+     * Drop the rq->lock, but keep IRQ/preempt disabled.
+     */
+    raw_spin_unlock(&this_rq->lock);
+    update_shares(this_cpu);
+    rcu_read_lock();
+    for_each_domain(this_cpu, sd) {
+        unsigned long interval;
+        int balance = 1;
+        if (!(sd->flags & SD_LOAD_BALANCE))
+            continue;
+        if (sd->flags & SD_BALANCE_NEWIDLE) {
+            /* If we've pulled tasks over stop searching: */
+            pulled_task = load_balance(this_cpu, this_rq,
+                                       sd, CPU_NEWLY_IDLE, &balance);
+        }
+        interval = msecs_to_jiffies(sd->balance_interval);
+        if (time_after(next_balance, sd->last_balance + interval))
+            next_balance = sd->last_balance + interval;
+        if (pulled_task) {
+            this_rq->idle_stamp = 0;
+            break;
+        }
+    }
+    rcu_read_unlock();
+    raw_spin_lock(&this_rq->lock);
+    if (pulled_task || time_after(jiffies, this_rq->next_balance)) {
+        /*
+         * We are going idle. next_balance may be set based on
+         * a busy processor. So reset next_balance.
+         */
+        this_rq->next_balance = next_balance;
+    }
+}
+
+```
+
+### 从运行队列中挑选一个新任务
+
+第三个平衡操作需要要做决定的地方是唤醒一个任务或者创建并且需要将之放入运行队列。选择这个运行队列需要考虑整个系统的负载均衡。
+
+每个调度类实现了自己的处理各自任务的策略并且提供了可以被调度框架（`kernel/sched.c`）执行的钩子（`select_task_rq()`）函数。它会在三种不同的场景下被调用，每一个都会被各自域的标志进行标记。
+
+- 1. `sched_exec()` 中的标志 SD_BALANCE_EXEC 。当一个任务通过 `exec()` 系统启动新任务时会调用该函数。一个新任务在此刻会占用很小一些内存和缓存，这就给了内核一个很好的进行平衡的机会。
+- 2. `wake_up_new_task()` 中的标志 SD_BALANCE_FORK 。这个函数是在新创建的任务第一次被唤醒时调用。
+- 3. `try_to_wake_up()` 中的标志 SD_BALANCE_WAKE。如果一个正在运行的任务再被唤醒之前通常会有一些缓存亲和性要考虑，以此来它调度到一个适合的队列中运行。
