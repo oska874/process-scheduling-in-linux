@@ -16,25 +16,25 @@ The main per-CPU runqueue data structure is defined in kernel/sched.c. It keeps 
   struct rt_rq rt;
   ```
   
-  ---
+---
   
-  # 4. 主运行队列
+# 4. 主运行队列
+
+主运行队列在每个 CPU 上都有一份，数据结构定义在 `kernel/sched.c`。它记录了特定 CPU 上所有的可运行的任务，并且还管理和每个处理器负载或域负载相关的不同调度的统计信息。更进一步来说，它包括下面几项：
   
-  主运行队列在每个 CPU 上都有一份，数据结构定义在 `kernel/sched.c`。它记录了特定 CPU 上所有的可运行的任务，并且还管理和每个处理器负载或域负载相关的不同调度的统计信息。更进一步来说，它包括下面几项：
-  
-  - 一个锁，用来同步当前 CPU 的调度操作
-    ```
-    raw_spinlock_t lock;
-    ```
-  - 分别指向当前运行的任务、空闲任务、停止任务的 `task_struct` 结构体指针
-    ```
-    struct task_struct *curr, *idle, *stop;
-    ```
-  - 公平调度和实时调度类的运行队列数据结构
-    ```
-    struct cfs_rq cfs;
-    struct rt_rq rt;
-    ```
+- 一个锁，用来同步当前 CPU 的调度操作
+  ```
+  raw_spinlock_t lock;
+  ```
+- 分别指向当前运行的任务、空闲任务、停止任务的 `task_struct` 结构体指针
+  ```
+  struct task_struct *curr, *idle, *stop;
+  ```
+- 公平调度和实时调度类的运行队列数据结构
+  ```
+  struct cfs_rq cfs;
+  struct rt_rq rt;
+  ```
 
 
 
